@@ -57,6 +57,7 @@ namespace connexion {
 		enum class status : int {
 			uninitialized = 0, error = -1, ok = 1
 		};
+
 		typedef ci::signals::Signal< void( MotionEvent ) >			motion_signal;
 		typedef ci::signals::Signal< void( ButtonDownEvent ) >		button_down_signal;
 		typedef ci::signals::Signal< void( ButtonUpEvent ) >		button_up_signal;
@@ -67,8 +68,7 @@ namespace connexion {
 
 		void		update();
 
-		status		getStatus() const { return mStatus; }
-		std::string getName() const { return mName; }
+		status		getStatus() const;
 		void		setLED( bool on );
 		bool		getLEDState() const { return mLEDState; }
 
@@ -77,16 +77,7 @@ namespace connexion {
 		button_up_signal &		getButtonUpSignal() { return mButtonUpSignal; }
 		device_change_signal &	getDeviceChangeSignal() { return mDeviceChangeSignal; }
 	private:
-		SiHdl		mHandle;
-		status		mStatus;
-		std::string	mName;
 		bool		mLEDState;
-
-		void		dispatchMotionEvent( const SiSpwEvent &event );
-		void		dispatchZeroEvent( const SiSpwEvent &event );
-		void		dispatchButtonDownEvent( const SiSpwEvent &event );
-		void		dispatchButtonUpEvent( const SiSpwEvent &event );
-		void		dispatchDeviceChangeEvent( const SiSpwEvent &event );
 
 		motion_signal			mMotionSignal;
 		button_down_signal		mButtonDownSignal;
