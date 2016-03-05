@@ -52,6 +52,8 @@ namespace connexion {
 		SiDevID				deviceId;
 	};
 
+	typedef std::shared_ptr< class Device > DeviceRef;
+
 	class Device {
 	public:
 		enum class status : int {
@@ -63,21 +65,39 @@ namespace connexion {
 		typedef ci::signals::Signal< void( ButtonUpEvent ) >		button_up_signal;
 		typedef ci::signals::Signal< void( DeviceChangeEvent ) >	device_change_signal;
 
-		Device( HWND rendererWindowId );
+		static void initialize( HWND rendererWindowId );
+		static void shutdown();
+
+		static DeviceRef create( SiDevID deviceId )
+		{ return std::make_shared< Device >( deviceId ); }
+
+		Device( SiDevID deviceId );
 		~Device();
 
-		void		update();
+		void					update();
 
-		status		getStatus() const;
-		void		setLED( bool on );
-		bool		getLEDState() const { return mLEDState; }
+		status					getStatus() const { return mStatus; }
+		std::string				getName() const { return mName; }
+		void					setLED( bool on );
+		bool					getLEDState() const { return mLEDState; }
+		SiHdl					getDeviceHandle() const { return mHandle; }
 
 		motion_signal &			getMotionSignal() { return mMotionSignal; }
 		button_down_signal &	getButtonDownSignal() { return mButtonDownSignal; }
 		button_up_signal &		getButtonUpSignal() { return mButtonUpSignal; }
 		device_change_signal &	getDeviceChangeSignal() { return mDeviceChangeSignal; }
+
+		void					dispatchMotionEvent( const SiSpwEvent & event );
+		void					dispatchZeroEvent( const SiSpwEvent & event );
+		void					dispatchButtonDownEvent( const SiSpwEvent & event );
+		void					dispatchButtonUpEvent( const SiSpwEvent & event );
+		void					dispatchDeviceChangeEvent( const SiSpwEvent & event );
+
 	private:
-		bool		mLEDState;
+		SiHdl					mHandle;
+		status					mStatus;
+		std::string				mName;
+		bool					mLEDState;
 
 		motion_signal			mMotionSignal;
 		button_down_signal		mButtonDownSignal;
