@@ -100,30 +100,39 @@ HWND CreateHiddenMessageWindow( HWND parent )
 }
 
 
-MotionEvent::MotionEvent( const ci::vec3 & r, const ci::vec3 & t, const long & p ) :
+Event::Event( SiDevID deviceId ) :
+	deviceId( deviceId )
+{
+
+}
+
+MotionEvent::MotionEvent( SiDevID deviceId, const ci::vec3 & r, const ci::vec3 & t, const long & p ) :
+	Event( deviceId ),
 	rotation( r ),
 	translation( t ),
 	timeSinceLast( p )
 {
 }
 
-ButtonEvent::ButtonEvent( const V3DKey & c, const std::string & n ) :
+ButtonEvent::ButtonEvent( SiDevID deviceId, const V3DKey & c, const std::string & n ) :
+	Event( deviceId ),
 	code( c ),
 	name( n )
 {
 }
 
-ButtonDownEvent::ButtonDownEvent( const V3DKey & c, const std::string & n ) :
-	ButtonEvent( c, n )
+ButtonDownEvent::ButtonDownEvent( SiDevID deviceId, const V3DKey & c, const std::string & n ) :
+	ButtonEvent( deviceId, c, n )
 {
 }
 
-ButtonUpEvent::ButtonUpEvent( const V3DKey & c, const std::string & n ) :
-	ButtonEvent( c, n )
+ButtonUpEvent::ButtonUpEvent( SiDevID deviceId, const V3DKey & c, const std::string & n ) :
+	ButtonEvent( deviceId, c, n )
 {
 }
 
-DeviceChangeEvent::DeviceChangeEvent( const SiDeviceChangeType & t, const SiDevID & did ) :
+DeviceChangeEvent::DeviceChangeEvent( SiDevID deviceId, const SiDeviceChangeType & t, const SiDevID & did ) :
+	Event( deviceId ),
 	type( t ),
 	deviceId( did )
 {
@@ -146,7 +155,8 @@ void Device::shutdown()
 
 Device::Device( SiDevID deviceId ) :
 	mLEDState( true ),
-	mStatus( status::uninitialized )
+	mStatus( status::uninitialized ),
+	mDeviceId( deviceId )
 {
 	SiOpenData oData;                    /* OS Independent data to open ball  */
 
@@ -241,12 +251,12 @@ void Device::dispatchMotionEvent( const SiSpwEvent & event )
 
 	long p = event.u.spwData.period;
 
-	mMotionSignal.emit( MotionEvent( r, t, p ) );
+	mMotionSignal.emit( MotionEvent( mDeviceId, r, t, p ) );
 }
 
 void Device::dispatchZeroEvent( const SiSpwEvent & event )
 {
-	mMotionSignal.emit( MotionEvent( vec3(), vec3(), event.u.spwData.period ) );
+	mMotionSignal.emit( MotionEvent( mDeviceId, vec3(), vec3(), event.u.spwData.period ) );
 }
 
 void Device::dispatchButtonDownEvent( const SiSpwEvent & event )
@@ -256,7 +266,7 @@ void Device::dispatchButtonDownEvent( const SiSpwEvent & event )
 	SiButtonName name;
 	SiGetButtonName( mHandle, code, &name );
 
-	mButtonDownSignal.emit( ButtonDownEvent( code, name.name ) );
+	mButtonDownSignal.emit( ButtonDownEvent( mDeviceId, code, name.name ) );
 }
 
 void Device::dispatchButtonUpEvent( const SiSpwEvent & event )
@@ -265,7 +275,7 @@ void Device::dispatchButtonUpEvent( const SiSpwEvent & event )
 	SiButtonName name;
 	SiGetButtonName( mHandle, code, &name );
 
-	mButtonUpSignal.emit( ButtonUpEvent( code, name.name ) );
+	mButtonUpSignal.emit( ButtonUpEvent( mDeviceId, code, name.name ) );
 }
 
 void Device::dispatchDeviceChangeEvent( const SiSpwEvent & event )
@@ -273,5 +283,5 @@ void Device::dispatchDeviceChangeEvent( const SiSpwEvent & event )
 	SiDeviceChangeType t = event.u.deviceChangeEventData.type;
 	SiDevID did = event.u.deviceChangeEventData.devID;
 
-	mDeviceChangeSignal.emit( DeviceChangeEvent( t, did ) );
+	mDeviceChangeSignal.emit( DeviceChangeEvent( mDeviceId, t, did ) );
 }

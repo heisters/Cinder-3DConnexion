@@ -8,13 +8,16 @@
 namespace connexion {
 	class Event
 	{
+	public:
+		Event( SiDevID deviceId );
 
+		SiDevID		deviceId;
 	};
 
 	class MotionEvent : public Event 
 	{
 	public:
-		MotionEvent( const ci::vec3 &r, const ci::vec3 &t, const long &p );
+		MotionEvent( SiDevID deviceId, const ci::vec3 &r, const ci::vec3 &t, const long &p );
 
 		ci::vec3	rotation;
 		ci::vec3	translation;
@@ -24,7 +27,7 @@ namespace connexion {
 	class ButtonEvent : public Event
 	{
 	public:
-		ButtonEvent( const V3DKey &c, const std::string &n );
+		ButtonEvent( SiDevID deviceId, const V3DKey &c, const std::string &n );
 
 		V3DKey			code;
 		std::string		name;
@@ -33,20 +36,20 @@ namespace connexion {
 	class ButtonDownEvent : public ButtonEvent
 	{
 	public:
-		ButtonDownEvent( const V3DKey &c, const std::string &n );
+		ButtonDownEvent( SiDevID deviceId, const V3DKey &c, const std::string &n );
 	};
 
 	class ButtonUpEvent : public ButtonEvent
 	{
 	public:
-		ButtonUpEvent( const V3DKey &c, const std::string &n );
+		ButtonUpEvent( SiDevID deviceId, const V3DKey &c, const std::string &n );
 
 	};
 
 	class DeviceChangeEvent : public Event
 	{
 	public:
-		DeviceChangeEvent( const SiDeviceChangeType &t, const SiDevID &did );
+		DeviceChangeEvent( SiDevID deviceId, const SiDeviceChangeType &t, const SiDevID &did );
 
 		SiDeviceChangeType	type;
 		SiDevID				deviceId;
@@ -81,6 +84,7 @@ namespace connexion {
 		void					setLED( bool on );
 		bool					getLEDState() const { return mLEDState; }
 		SiHdl					getDeviceHandle() const { return mHandle; }
+		SiDevID					getDeviceId() const { return mDeviceId; }
 
 		motion_signal &			getMotionSignal() { return mMotionSignal; }
 		button_down_signal &	getButtonDownSignal() { return mButtonDownSignal; }
@@ -98,6 +102,7 @@ namespace connexion {
 		status					mStatus;
 		std::string				mName;
 		bool					mLEDState;
+		SiDevID					mDeviceId;
 
 		motion_signal			mMotionSignal;
 		button_down_signal		mButtonDownSignal;
