@@ -2,8 +2,11 @@
 
 #include <windows.h>
 #include <si.h>
+#include <thread>
+#include <mutex>
 #include "cinder/Signals.h"
 #include "cinder/Vector.h"
+#include "concurrent_queue.h"
 
 namespace connexion {
 	class Event
@@ -59,6 +62,7 @@ namespace connexion {
 
 	class Device {
 	public:
+		// Types --------------------------------------------------------------
 		enum class status : int {
 			uninitialized = 0, error = -1, ok = 1
 		};
@@ -68,14 +72,22 @@ namespace connexion {
 		typedef ci::signals::Signal< void( ButtonUpEvent ) >		button_up_signal;
 		typedef ci::signals::Signal< void( DeviceChangeEvent ) >	device_change_signal;
 
+		// System Initialization ----------------------------------------------
+
 		static void initialize( HWND rendererWindowId );
 		static void shutdown();
 
-		static DeviceRef create( SiDevID deviceId )
-		{ return std::make_shared< Device >( deviceId ); }
+		// Instantiation ------------------------------------------------------
 
-		Device( SiDevID deviceId );
+		static DeviceRef create( SiDevID deviceId );
+
+		static DeviceRef create( SiDevID deviceId, const std::string &name, status status )
+		{ return std::make_shared< Device >( deviceId, name, status ); }
+
+		Device( SiDevID deviceId, const std::string &name, status status );
 		~Device();
+
+		// Public API ---------------------------------------------------------
 
 		void					update();
 
@@ -83,7 +95,6 @@ namespace connexion {
 		std::string				getName() const { return mName; }
 		void					setLED( bool on );
 		bool					getLEDState() const { return mLEDState; }
-		SiHdl					getDeviceHandle() const { return mHandle; }
 		SiDevID					getDeviceId() const { return mDeviceId; }
 
 		motion_signal &			getMotionSignal() { return mMotionSignal; }
@@ -91,22 +102,36 @@ namespace connexion {
 		button_up_signal &		getButtonUpSignal() { return mButtonUpSignal; }
 		device_change_signal &	getDeviceChangeSignal() { return mDeviceChangeSignal; }
 
+		// Members ------------------------------------------------------------
+
+	private:
+		// Device member vars
+		
+		status					mStatus;
+		std::string				mName;
+		bool					mLEDState;
+		SiDevID					mDeviceId;
+
+		// Signals
+
 		void					dispatchMotionEvent( const SiSpwEvent & event );
 		void					dispatchZeroEvent( const SiSpwEvent & event );
 		void					dispatchButtonDownEvent( const SiSpwEvent & event );
 		void					dispatchButtonUpEvent( const SiSpwEvent & event );
 		void					dispatchDeviceChangeEvent( const SiSpwEvent & event );
 
-	private:
-		SiHdl					mHandle;
-		status					mStatus;
-		std::string				mName;
-		bool					mLEDState;
-		SiDevID					mDeviceId;
-
 		motion_signal			mMotionSignal;
 		button_down_signal		mButtonDownSignal;
 		button_up_signal		mButtonUpSignal;
 		device_change_signal	mDeviceChangeSignal;
+
+		// Multithreading
+
+	public:
+		void					queueEvent( const SiSpwEvent &event );
+
+	private:
+
+		concurrent_queue< SiSpwEvent > mEventQueue;
 	};
 }
