@@ -39,6 +39,7 @@ public:
 
 	void							start( HWND hwnd );
 	DeviceRef						initDevice( SiDevID deviceId );
+	void							closeDevice( SiDevID deviceId );
 	void							setDeviceLED( SiDevID deviceId, bool on = true );
 	std::string						getDeviceButtonName( SiDevID deviceId, V3DKey code );
 
@@ -117,7 +118,7 @@ LRESULT CALLBACK MessageWindowManager::WndProc(	HWND hwnd, UINT wm, WPARAM wPara
 	for ( auto& device : instance()->mDevices )
 	{
 		/* check whether msg was a 3D mouse event and process it */
-		if ( SiGetEvent( device.second.handle, SI_AVERAGE_EVENTS, &eventData, &event ) == SI_IS_EVENT )
+		if ( SiGetEvent( device.second.handle, 0, &eventData, &event ) == SI_IS_EVENT )
 		{
 			device.second.ref->queueEvent( event );
 			return 0;
@@ -228,17 +229,19 @@ DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 
 	lock_guard< mutex > lock( mMutex );
 
-	mDevices.emplace( piecewise_construct, forward_as_tuple( deviceId ), forward_as_tuple() );
+	mDevices.emplace( piecewise_construct,
+		forward_as_tuple( deviceId ),
+		forward_as_tuple() );
 
 	SiOpenData			oData;          /* OS Independent data to open ball  */
 	DeviceRegistration&	device = mDevices.at( deviceId );
 
 	SiOpenWinInit( &oData, mWindowHndl ); /* init Win. platform specific data  */
-	SiSetUiMode( device.handle, SI_UI_ALL_CONTROLS ); /* Config SoftButton Win Display */
+	SiSetUiMode( device.handle, SI_UI_NO_CONTROLS ); /* Config SoftButton Win Display */
 
 												/* open data, which will check for device type and return the device handle
 												to be used by this function */
-	if ( ( device.handle = SiOpen( "Cinder", deviceId, NULL, SI_EVENT, &oData ) ) == NULL )
+	if ( ( device.handle = SiOpen( "Cinder", deviceId, SI_NO_MASK, SI_EVENT, &oData ) ) == NULL )
 	{
 		SiTerminate();  /* called to shut down the SpaceWare input library */
 		device.status = Device::status::error; /* could not open device */
@@ -285,6 +288,11 @@ DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 	return device.ref;
 }
 
+void MessageWindowManager::closeDevice( SiDevID deviceId )
+{
+	SiClose( mDevices.at( deviceId ).handle );
+}
+
 // Global system management ---------------------------------------------------
 
 void Device::initialize( HWND rendererWindowId )
@@ -296,6 +304,19 @@ void Device::shutdown()
 {
 	MessageWindowManager::destroyInstance();
 }
+
+// Global system introspection ------------------------------------------------
+
+vector< SiDevID > Device::getAllDeviceIds()
+{
+	int nDevices = SiGetNumDevices();
+	vector< SiDevID > ids;
+	for ( int i = 0; i < nDevices; ++i )
+		ids.push_back( i + 1 ); // 0 is the test device
+
+	return ids;
+}
+
 
 // Device class ---------------------------------------------------------------
 
@@ -315,6 +336,7 @@ Device::Device( SiDevID deviceId, const string &name, status status ) :
 
 Device::~Device()
 {
+	MessageWindowManager::instance()->closeDevice( mDeviceId );
 }
 
 void Device::update()
@@ -392,7 +414,6 @@ void Device::dispatchButtonDownEvent( const SiSpwEvent & event )
 
 	V3DKey code = event.u.hwButtonEvent.buttonNumber;
 	string name = MessageWindowManager::instance()->getDeviceButtonName( mDeviceId, code );
-
 	mButtonDownSignal.emit( ButtonDownEvent( mDeviceId, code, name ) );
 }
 

@@ -77,6 +77,10 @@ namespace connexion {
 		static void initialize( HWND rendererWindowId );
 		static void shutdown();
 
+		// System Methods -----------------------------------------------------
+
+		static std::vector< SiDevID > getAllDeviceIds();
+
 		// Instantiation ------------------------------------------------------
 
 		static DeviceRef create( SiDevID deviceId );
