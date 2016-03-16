@@ -61,6 +61,7 @@ private:
 		SiHdl			handle;
 		Device::status	status = Device::status::uninitialized;
 		std::string		name;
+		std::string		port;
 	};
 	std::map< SiDevID, DeviceRegistration > mDevices;
 };
@@ -251,6 +252,11 @@ DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 		SiDeviceName devName;
 		SiGetDeviceName( device.handle, &devName );
 		device.name = devName.name;
+
+		SiDevPort devPort;
+		SiGetDevicePort( device.handle, &devPort );
+		device.port = devPort.portName;
+
 		device.status = Device::status::ok; /* opened device succesfully */
 
 		// Disallow other applications from using the device
@@ -283,7 +289,7 @@ DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 		}
 	}
 
-	device.ref = Device::create( deviceId, device.name, device.status );
+	device.ref = Device::create( deviceId, device.name, device.port, device.status );
 
 	return device.ref;
 }
@@ -325,10 +331,11 @@ DeviceRef Device::create( SiDevID deviceId )
 	return MessageWindowManager::instance()->initDevice( deviceId );
 }
 
-Device::Device( SiDevID deviceId, const string &name, status status ) :
+Device::Device( SiDevID deviceId, const string &name, const string &port, status status ) :
 	mLEDState( true ),
 	mDeviceId( deviceId ),
 	mName( name ),
+	mPort( port ),
 	mStatus( status )
 {
 

@@ -85,10 +85,10 @@ namespace connexion {
 
 		static DeviceRef create( SiDevID deviceId );
 
-		static DeviceRef create( SiDevID deviceId, const std::string &name, status status )
-		{ return std::make_shared< Device >( deviceId, name, status ); }
+		static DeviceRef create( SiDevID deviceId, const std::string &name, const std::string &port, status status )
+		{ return std::make_shared< Device >( deviceId, name, port, status ); }
 
-		Device( SiDevID deviceId, const std::string &name, status status );
+		Device( SiDevID deviceId, const std::string &name, const std::string &port, status status );
 		~Device();
 
 		// Public API ---------------------------------------------------------
@@ -97,6 +97,7 @@ namespace connexion {
 
 		status					getStatus() const { return mStatus; }
 		std::string				getName() const { return mName; }
+		std::string				getPort() const { return mPort; }
 		void					setLED( bool on );
 		bool					getLEDState() const { return mLEDState; }
 		SiDevID					getDeviceId() const { return mDeviceId; }
@@ -113,6 +114,7 @@ namespace connexion {
 		
 		status					mStatus;
 		std::string				mName;
+		std::string				mPort;
 		bool					mLEDState;
 		SiDevID					mDeviceId;
 
