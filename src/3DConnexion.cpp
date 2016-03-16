@@ -261,7 +261,7 @@ DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 
 		// Disallow other applications from using the device
 		SpwRetVal result;
-		result = SiGrabDevice( device.handle, SPW_TRUE /*exclusive*/ );
+		result = SiGrabDevice( device.handle, SPW_FALSE /* soft capture */ );
 		if ( result != SPW_NO_ERROR )
 		{
 			CI_LOG_W( "Could not establish an exclusive claim on " << devName.name );
