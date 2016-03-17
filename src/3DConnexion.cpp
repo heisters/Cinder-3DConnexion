@@ -46,11 +46,18 @@ public:
 	std::string						getDeviceButtonName( SiDevID deviceId, V3DKey code );
 
 private:
+	typedef std::unique_lock< std::recursive_mutex > lock_t;
+	lock_t							scopedLock() { return lock_t( mMutex ); }
+	void							waitUntilReady()
+	{
+		if ( ! mIsReady ) mReadyCV.wait( scopedLock(), [&] { return (bool)mIsReady; } );
+	}
+
 	std::thread						mThread;
-	std::mutex						mMutex;
-	std::recursive_mutex			mRMutex;
+	std::recursive_mutex			mMutex;
 	std::atomic< bool >				mIsReady = false;
-	std::condition_variable			mReadyCV;
+	std::atomic< bool >				mShouldQuit = false;
+	std::condition_variable_any		mReadyCV;
 
 	HWND							mWindowHndl = NULL;
 	Device*							mCurrentDevice = nullptr;
@@ -84,6 +91,7 @@ MessageWindowManagerRef& MessageWindowManager::instance()
 
 void MessageWindowManager::destroyInstance()
 {
+	sInstance = nullptr;
 }
 
 
@@ -94,12 +102,21 @@ MessageWindowManager::MessageWindowManager()
 
 MessageWindowManager::~MessageWindowManager()
 {
+	mShouldQuit = true;
+	if ( mThread.joinable() ) mThread.join();
 	closeAllDevices();
-
-	PostMessage( mWindowHndl, WM_QUIT, 0, 0 );
-	mThread.join();
 }
 
+
+void MessageWindowManager::start( HWND parent )
+{
+	auto lock = scopedLock();
+
+	if ( mWindowHndl != NULL ) return;
+
+
+	mThread = thread( bind( &MessageWindowManager::CreateHiddenWindow, this, parent ) );
+}
 
 LRESULT CALLBACK MessageWindowManager::WndProc(	HWND hwnd, UINT wm, WPARAM wParam, LPARAM lParam )
 {
@@ -119,7 +136,7 @@ LRESULT CALLBACK MessageWindowManager::WndProc(	HWND hwnd, UINT wm, WPARAM wPara
 		SiGetEventWinInit( &eventData, wm, wParam, lParam );
 
 		{
-			lock_guard< mutex > lock( instance()->mMutex );
+			auto lock = instance()->scopedLock();
 
 			for ( auto& device : instance()->mDevices )
 			{
@@ -137,20 +154,11 @@ LRESULT CALLBACK MessageWindowManager::WndProc(	HWND hwnd, UINT wm, WPARAM wPara
 	return DefWindowProc( hwnd, wm, wParam, lParam );
 }
 
-void MessageWindowManager::start( HWND parent )
-{
-	lock_guard< mutex > lock( mMutex );
-
-	if ( mWindowHndl != NULL ) return;
-
-
-	mThread = thread( bind( &MessageWindowManager::CreateHiddenWindow, this, parent ) );
-}
 
 HWND MessageWindowManager::CreateHiddenWindow( HWND parent )
 {
 	{
-		lock_guard< mutex > lock( mMutex );
+		auto lock = scopedLock();
 
 		WNDCLASSEX wcex;
 		wcex.cbSize = sizeof( WNDCLASSEX );
@@ -184,19 +192,12 @@ HWND MessageWindowManager::CreateHiddenWindow( HWND parent )
 	mReadyCV.notify_all();
 
 	MSG msg;
-	bool running = true;
-	while ( running )
+	while ( ! mShouldQuit )
 	{
-		while ( true )
-		{
-			{
-				lock_guard< mutex > lock( mMutex );
-				if ( ! PeekMessage( &msg, mWindowHndl, 0, 0, PM_REMOVE ) ) break;
-			}
-
+		while ( PeekMessage( &msg, mWindowHndl, 0, 0, PM_REMOVE ) ) {
 			if ( msg.message == WM_QUIT )
 			{
-				running = false;
+				mShouldQuit = true;
 				break;
 			}
 
@@ -210,7 +211,7 @@ HWND MessageWindowManager::CreateHiddenWindow( HWND parent )
 
 void MessageWindowManager::setDeviceLED( SiDevID deviceId, bool on )
 {
-	lock_guard< mutex > lock( mMutex );
+	auto lock = scopedLock();
 	
 	SiSetLEDs( mDevices.at( deviceId ).handle, on ? 1 : 0 );
 }
@@ -219,7 +220,7 @@ std::string MessageWindowManager::getDeviceButtonName( SiDevID deviceId, V3DKey 
 {
 	std::string s_name;
 	{
-		lock_guard< mutex > lock( mMutex );
+		auto lock = scopedLock();
 
 		SiButtonName bt_name;
 		SiGetButtonName( mDevices.at( deviceId ).handle, code, &bt_name );
@@ -232,10 +233,8 @@ std::string MessageWindowManager::getDeviceButtonName( SiDevID deviceId, V3DKey 
 
 DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 {
-	if ( ! mIsReady ) mReadyCV.wait( unique_lock< mutex >( mMutex ), [&] { return (bool)mIsReady; } );
-
-
-	lock_guard< mutex > lock( mMutex );
+	waitUntilReady();
+	auto lock = scopedLock();
 
 	mDevices.emplace( piecewise_construct,
 		forward_as_tuple( deviceId ),
@@ -303,9 +302,9 @@ DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 
 bool MessageWindowManager::closeRegistration( DeviceRegistration & registration )
 {
-	if ( registration.status == Device::status::ok ) {
+	if ( registration.status != Device::status::closed ) {
 		SiClose( registration.handle );
-		registration.status = Device::status::uninitialized;
+		registration.status = Device::status::closed;
 		return true;
 	}
 	return false;
@@ -313,7 +312,7 @@ bool MessageWindowManager::closeRegistration( DeviceRegistration & registration 
 
 void MessageWindowManager::closeDevice( SiDevID deviceId )
 {
-	lock_guard< recursive_mutex > lock( mRMutex );
+	auto lock = scopedLock();
 
 	if ( mDevices.find( deviceId ) != mDevices.end() ) {
 		if ( closeRegistration( mDevices.at( deviceId ) ) ) {
@@ -324,7 +323,7 @@ void MessageWindowManager::closeDevice( SiDevID deviceId )
 
 void MessageWindowManager::closeAllDevices()
 {
-	lock_guard< recursive_mutex > lock( mRMutex );
+	auto lock = scopedLock();
 
 	for ( auto& d : mDevices ) {
 		closeRegistration( d.second );

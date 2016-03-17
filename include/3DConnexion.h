@@ -64,7 +64,7 @@ namespace connexion {
 	public:
 		// Types --------------------------------------------------------------
 		enum class status : int {
-			uninitialized = 0, error = -1, ok = 1
+			uninitialized = 0, error = -1, ok = 1, closed = 2
 		};
 
 		typedef ci::signals::Signal< void( MotionEvent ) >			motion_signal;
