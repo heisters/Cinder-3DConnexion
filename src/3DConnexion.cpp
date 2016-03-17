@@ -4,6 +4,7 @@
 #include <WinUser.h>
 #include <tchar.h>
 #include <condition_variable>
+#include <atomic>
 
 #include <spwmacro.h>
 #include <siapp.h>
@@ -40,13 +41,15 @@ public:
 	void							start( HWND hwnd );
 	DeviceRef						initDevice( SiDevID deviceId );
 	void							closeDevice( SiDevID deviceId );
+	void							closeAllDevices();
 	void							setDeviceLED( SiDevID deviceId, bool on = true );
 	std::string						getDeviceButtonName( SiDevID deviceId, V3DKey code );
 
 private:
 	std::thread						mThread;
 	std::mutex						mMutex;
-	bool							mIsReady = false;
+	std::recursive_mutex			mRMutex;
+	std::atomic< bool >				mIsReady = false;
 	std::condition_variable			mReadyCV;
 
 	HWND							mWindowHndl = NULL;
@@ -64,6 +67,8 @@ private:
 		std::string		port;
 	};
 	std::map< SiDevID, DeviceRegistration > mDevices;
+
+	bool							closeRegistration( DeviceRegistration &registration );
 };
 
 MessageWindowManagerRef MessageWindowManager::sInstance = nullptr;
@@ -89,43 +94,45 @@ MessageWindowManager::MessageWindowManager()
 
 MessageWindowManager::~MessageWindowManager()
 {
-	{
-		lock_guard< mutex > lock( mMutex );
+	closeAllDevices();
 
-		SiReleaseDevice( mWindowHndl );
-		PostMessage( mWindowHndl, WM_QUIT, 0, 0 );
-	}
-
+	PostMessage( mWindowHndl, WM_QUIT, 0, 0 );
 	mThread.join();
 }
 
 
 LRESULT CALLBACK MessageWindowManager::WndProc(	HWND hwnd, UINT wm, WPARAM wParam, LPARAM lParam )
 {
-	MSG				msg;
-	SiSpwEvent		event;    /* SpaceWare Event */
-	SiGetEventData	eventData;/* SpaceWare Event Data */
+	if ( instance()->mIsReady ) {
 
-	msg.hwnd = hwnd;
-	msg.message = wm;
-	msg.lParam = lParam;
-	msg.wParam = wParam;
+		MSG				msg;
+		SiSpwEvent		event;    /* SpaceWare Event */
+		SiGetEventData	eventData;/* SpaceWare Event Data */
 
-
-	/* init Window platform specific data for a call to SiGetEvent */
-	SiGetEventWinInit( &eventData, wm, wParam, lParam );
+		msg.hwnd = hwnd;
+		msg.message = wm;
+		msg.lParam = lParam;
+		msg.wParam = wParam;
 
 
-	for ( auto& device : instance()->mDevices )
-	{
-		/* check whether msg was a 3D mouse event and process it */
-		if ( SiGetEvent( device.second.handle, 0, &eventData, &event ) == SI_IS_EVENT )
+		/* init Window platform specific data for a call to SiGetEvent */
+		SiGetEventWinInit( &eventData, wm, wParam, lParam );
+
 		{
-			device.second.ref->queueEvent( event );
-			return 0;
-		}
-	}
+			lock_guard< mutex > lock( instance()->mMutex );
 
+			for ( auto& device : instance()->mDevices )
+			{
+				/* check whether msg was a 3D mouse event and process it */
+				if ( SiGetEvent( device.second.handle, 0, &eventData, &event ) == SI_IS_EVENT )
+				{
+					device.second.ref->queueEvent( event );
+					return 0;
+				}
+			}
+		}
+
+	}
 
 	return DefWindowProc( hwnd, wm, wParam, lParam );
 }
@@ -225,7 +232,7 @@ std::string MessageWindowManager::getDeviceButtonName( SiDevID deviceId, V3DKey 
 
 DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 {
-	if ( ! mIsReady ) mReadyCV.wait( unique_lock< mutex >( mMutex ), [&] { return mIsReady; } );
+	if ( ! mIsReady ) mReadyCV.wait( unique_lock< mutex >( mMutex ), [&] { return (bool)mIsReady; } );
 
 
 	lock_guard< mutex > lock( mMutex );
@@ -294,9 +301,36 @@ DeviceRef MessageWindowManager::initDevice( SiDevID deviceId )
 	return device.ref;
 }
 
+bool MessageWindowManager::closeRegistration( DeviceRegistration & registration )
+{
+	if ( registration.status == Device::status::ok ) {
+		SiClose( registration.handle );
+		registration.status = Device::status::uninitialized;
+		return true;
+	}
+	return false;
+}
+
 void MessageWindowManager::closeDevice( SiDevID deviceId )
 {
-	SiClose( mDevices.at( deviceId ).handle );
+	lock_guard< recursive_mutex > lock( mRMutex );
+
+	if ( mDevices.find( deviceId ) != mDevices.end() ) {
+		if ( closeRegistration( mDevices.at( deviceId ) ) ) {
+			mDevices.erase( deviceId );
+		}
+	}
+}
+
+void MessageWindowManager::closeAllDevices()
+{
+	lock_guard< recursive_mutex > lock( mRMutex );
+
+	for ( auto& d : mDevices ) {
+		closeRegistration( d.second );
+	}
+
+	mDevices.clear();
 }
 
 // Global system management ---------------------------------------------------
